@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { useNavigate } from 'react-router-dom';
 import { GoogleLogin } from '@react-oauth/google';
+import { authService } from './services/auth.service';
 import "./Signup.css";
 
 function Signup() {
@@ -69,6 +70,7 @@ function Signup() {
     e.preventDefault();
     if (!validateForm()) return;
     setLoading(true);
+
     const payload = {
       firstName: formData.firstName,
       lastName: formData.lastName,
@@ -77,54 +79,42 @@ function Signup() {
       email: formData.email,
       password: formData.password
     };
+
     try {
-      const res = await fetch('http://localhost:3001/register', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-      const text = await res.text();
-      if (res.ok) {
+      const result = await authService.manualRegister(payload);
+      if (result.success) {
         alert('Registration successful!');
-        navigate('/login');
+        navigate('/dashboard');
       } else {
-        alert('Registration failed: ' + text);
+        alert('Registration failed: ' + result.message);
       }
     } catch (err) {
-      alert('Error: ' + err.message);
+      const errorMessage = err.response?.data?.message || err.message || 'Registration failed';
+      alert('Error: ' + errorMessage);
     }
     setLoading(false);
   };
 
   const handleGoogleSignup = async (credentialResponse) => {
     try {
-      const response = await fetch('http://localhost:3001/google-login', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ credential: credentialResponse.credential })
-      });
+      const result = await authService.googleLogin(credentialResponse.credential);
 
-      const data = await response.json();
-
-      if (response.ok && data.success) {
-        localStorage.setItem('userEmail', data.user.email);
-
+      if (result.success) {
         // For signup, always redirect to complete profile
         navigate('/google-name', {
           state: {
-            email: data.user.email,
-            given_name: data.user.firstName,
-            family_name: data.user.lastName
+            email: result.user.email,
+            given_name: result.user.firstName,
+            family_name: result.user.lastName
           }
         });
       } else {
-        throw new Error(data.message || 'Signup failed');
+        alert('Google signup failed: ' + (result.message || 'Unknown error'));
       }
-    } catch (err) {
-      console.error('Google signup error:', err);
-      alert('Google Sign Up Failed. Please try again.');
+    } catch (error) {
+      console.error('Google signup error:', error);
+      const errorMessage = error.response?.data?.message || error.message || 'Google signup failed';
+      alert('Google signup failed: ' + errorMessage);
     }
   };
 

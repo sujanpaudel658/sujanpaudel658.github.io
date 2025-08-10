@@ -41,6 +41,69 @@ export const authService = {
         }
     },
 
+    async manualRegister(userData) {
+        try {
+            console.log('🔄 Manual registration attempt:', userData);
+            console.log('🌐 API URL:', API_URL);
+
+            const response = await api.post('/register', userData);
+            console.log('✅ Registration response:', response.data);
+
+            if (response.data.success) {
+                localStorage.setItem('userEmail', response.data.user.email);
+                localStorage.setItem('userToken', response.data.token);
+            }
+            return response.data;
+        } catch (error) {
+            console.error('❌ Manual registration error:', error);
+            console.error('❌ Error response:', error.response);
+            console.error('❌ Error message:', error.message);
+
+            // If axios fails, try with fetch as fallback
+            if (error.code === 'NETWORK_ERROR' || !error.response) {
+                console.log('🔄 Trying fallback fetch method...');
+                try {
+                    const fetchResponse = await fetch(`${API_URL}/register`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json'
+                        },
+                        credentials: 'include',
+                        body: JSON.stringify(userData)
+                    });
+
+                    const result = await fetchResponse.json();
+                    console.log('✅ Fallback fetch response:', result);
+
+                    if (result.success) {
+                        localStorage.setItem('userEmail', result.user.email);
+                        localStorage.setItem('userToken', result.token);
+                    }
+                    return result;
+                } catch (fetchError) {
+                    console.error('❌ Fallback fetch also failed:', fetchError);
+                    throw fetchError;
+                }
+            }
+            throw error;
+        }
+    },
+
+    async manualLogin(credentials) {
+        try {
+            const response = await api.post('/login', credentials);
+            if (response.data.success) {
+                localStorage.setItem('userEmail', response.data.user.email);
+                localStorage.setItem('userToken', response.data.token);
+            }
+            return response.data;
+        } catch (error) {
+            console.error('Manual login error:', error.response || error);
+            throw error;
+        }
+    },
+
     logout() {
         localStorage.removeItem('userEmail');
         localStorage.removeItem('userToken');

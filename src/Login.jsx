@@ -45,21 +45,25 @@ const Login = () => {
     e.preventDefault();
     if (!validateForm()) return;
     setLoading(true);
+
     try {
-      const res = await fetch('http://localhost:3001/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: formData.email, password: formData.password })
-      });
-      const text = await res.text();
-      if (res.ok) {
+      const credentials = {
+        email: formData.email,
+        password: formData.password
+      };
+
+      const result = await authService.manualLogin(credentials);
+
+      if (result.success) {
         alert('Login successful!');
         navigate('/dashboard');
       } else {
-        alert('Login failed: ' + text);
+        alert('Login failed: ' + result.message);
       }
     } catch (err) {
-      alert('Error: ' + err.message);
+      const errorMessage = err.response?.data?.message || err.message || 'Login failed';
+      alert('Error: ' + errorMessage);
+      console.error('Manual login error:', err);
     }
     setLoading(false);
   };

@@ -6,6 +6,8 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const SignupModel = require('./models/signup'); // Your SignupModel
+const CampaignModel = require('./models/campaign'); // Campaign model
+const authRoutes = require('./routes/auth'); // Auth routes
 
 // Google Client ID for debugging
 const GOOGLE_CLIENT_ID = "70701411090-qn40im1n8qi1773qdd4qt7sv8d0db4kb.apps.googleusercontent.com";
@@ -33,39 +35,42 @@ app.use((req, res, next) => {
 app.use(express.json({ limit: '10mb' }));
 app.use(cors({
     origin: function (origin, callback) {
+        console.log(`🌐 CORS request from origin: ${origin}`);
+
         // Allow requests with no origin (like mobile apps or curl requests)
-        if (!origin) return callback(null, true);
-        
+        if (!origin) {
+            console.log('✅ CORS: No origin - allowing request');
+            return callback(null, true);
+        }
+
         // Allow any localhost or 127.0.0.1 with any port
-        if (origin.match(/^https?:\/\/localhost:\d+$/) || 
-            origin.match(/^https?:\/\/127\.0\.0\.1:\d+$/)) {
+        const localhostRegex = /^https?:\/\/(localhost|127\.0\.0\.1):\d+$/;
+
+        if (localhostRegex.test(origin)) {
+            console.log('✅ CORS: Localhost origin allowed:', origin);
             return callback(null, true);
         }
-        
-        // Allow specific origins if needed
+
+        // For development, you can also allow specific domains
         const allowedOrigins = [
-            'http://localhost:3000',
-            'http://localhost:5173',
-            'http://localhost:5174',
-            'http://localhost:5175',
-            'http://127.0.0.1:3000',
-            'http://127.0.0.1:5173',
-            'http://127.0.0.1:5174',
-            'http://127.0.0.1:5175'
+            'http://localhost',
+            'https://localhost',
+            'http://127.0.0.1',
+            'https://127.0.0.1'
         ];
-        
-        if (allowedOrigins.includes(origin)) {
+
+        if (allowedOrigins.some(allowed => origin.startsWith(allowed))) {
+            console.log('✅ CORS: Origin allowed:', origin);
             return callback(null, true);
         }
-        
-        // Log and reject other origins in development
-        console.log(`🚫 CORS blocked origin: ${origin}`);
-        callback(new Error('Not allowed by CORS'));
+
+        console.log('❌ CORS: Origin not allowed:', origin);
+        const msg = 'The CORS policy for this site does not allow access from the specified Origin.';
+        return callback(new Error(msg), false);
     },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
-    optionsSuccessStatus: 200 // Some legacy browsers choke on 204
+    allowedHeaders: ['Content-Type', 'Authorization', 'Accept']
 }));
 app.use(express.urlencoded({ extended: true }));
 
@@ -78,181 +83,280 @@ app.use((req, res, next) => {
     res.send = function (data) {
         console.log(`📤 ${req.method} ${req.path} - Status: ${res.statusCode}`);
         if (res.statusCode >= 400) {
-            console.log('Error Response:', data);
+            console.log('Error Response:', data.substring(0, 200));
         }
         originalSend.call(this, data);
     };
     next();
 });
 
-// Import routes
-const authRoutes = require('./routes/auth');
-
-// Campaign model
-const Campaign = require('./models/campaign');
-
-// Use routes
+// Mount auth routes
 app.use('/auth', authRoutes);
 
-// --------------------------------
-// ✅ CAMPAIGN ROUTES
-// --------------------------------
+// Test route
+app.get('/test', (req, res) => {
+    res.json({ success: true, message: 'Server is working!' });
+});
 
-// Get all campaigns
-app.get('/campaigns', async (req, res) => {
+// Debug route to list users (for development only)
+app.get('/debug/users', async (req, res) => {
     try {
-        console.log('📥 GET /campaigns - Fetching all campaigns');
-        const campaigns = await Campaign.find().sort({ createdAt: -1 });
-        console.log(`✅ Found ${campaigns.length} campaigns`);
-        res.json(campaigns);
+        const users = await SignupModel.find({}, { email: 1, firstName: 1, lastName: 1, provider: 1 });
+        res.json({ success: true, users });
     } catch (error) {
-        console.error('❌ Error fetching campaigns:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Failed to fetch campaigns',
-            error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
-        });
+        res.status(500).json({ success: false, message: error.message });
     }
 });
 
-// Create a new campaign
-app.post('/campaigns', async (req, res) => {
+// Debug route to delete test users (for development only)
+app.delete('/debug/test-users', async (req, res) => {
     try {
-        console.log('📥 POST /campaigns - Creating new campaign');
-        console.log('Request body:', req.body);
+        const result = await SignupModel.deleteMany({
+            email: { $regex: /test|demo|example/i }
+        });
+        res.json({
+            success: true,
+            message: `Deleted ${result.deletedCount} test users`,
+            deletedCount: result.deletedCount
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
 
-        const { title, amount, photoUrls, description, email, username } = req.body;
+// Manual Registration Route
+app.post('/register', async (req, res) => {
+    console.log('📥 POST /register - Body:', req.body);
 
-        if (!title || !amount || !description || !email) {
+    try {
+        const { firstName, lastName, gender, dob, email, password } = req.body;
+        console.log(`🔍 Registration attempt for email: ${email}`);
+
+        // Validation
+        if (!firstName || !lastName || !email || !password) {
+            console.log('❌ Validation failed - missing required fields');
             return res.status(400).json({
                 success: false,
-                message: 'Missing required fields: title, amount, description, email'
+                message: 'All required fields must be provided'
             });
         }
 
-        const campaign = new Campaign({
-            title,
-            amount: Number(amount),
-            photoUrls: photoUrls || [],
-            description,
+        // Check if user already exists
+        console.log(`🔎 Checking if user exists with email: ${email}`);
+        const existingUser = await SignupModel.findOne({ email });
+
+        if (existingUser) {
+            console.log(`❌ User already exists:`, {
+                email: existingUser.email,
+                firstName: existingUser.firstName,
+                provider: existingUser.provider,
+                createdAt: existingUser.createdAt
+            });
+            return res.status(400).json({
+                success: false,
+                message: 'User with this email already exists'
+            });
+        }
+
+        console.log('✅ Email is available, proceeding with registration');
+
+        // Hash password
+        const hashedPassword = await bcrypt.hash(password, 12);
+        console.log('✅ Password hashed successfully');
+
+        // Create new user
+        const newUser = new SignupModel({
+            firstName,
+            lastName,
             email,
-            username
+            password: hashedPassword,
+            gender: gender || '',
+            dob: dob || null,
+            provider: 'local',
+            profileCompleted: true // Manual registration completes profile
         });
 
-        const savedCampaign = await campaign.save();
-        console.log('✅ Campaign created successfully:', savedCampaign._id);
-
-        res.status(201).json({
-            success: true,
-            message: 'Campaign created successfully',
-            campaign: savedCampaign
+        console.log('💾 Saving new user to database...');
+        const savedUser = await newUser.save();
+        console.log('✅ User registered successfully:', {
+            id: savedUser._id,
+            email: savedUser.email,
+            name: `${savedUser.firstName} ${savedUser.lastName}`
         });
-    } catch (error) {
-        console.error('❌ Error creating campaign:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Failed to create campaign',
-            error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
-        });
-    }
-});
-
-// Test endpoint
-app.get('/test', (req, res) => {
-    console.log('✅ Test endpoint called');
-    res.json({ message: 'Server is working!', timestamp: new Date().toISOString() });
-});
-
-// Health check endpoint
-app.get('/health', async (req, res) => {
-    try {
-        // Test MongoDB connection
-        await mongoose.connection.db.admin().ping();
 
         res.json({
-            status: 'OK',
-            timestamp: new Date().toISOString(),
-            services: {
-                server: 'Running',
-                mongodb: {
-                    status: 'Connected',
-                    host: mongoose.connection.host,
-                    port: mongoose.connection.port,
-                    database: mongoose.connection.name,
-                    readyState: mongoose.connection.readyState
-                },
-                google: {
-                    clientId: GOOGLE_CLIENT_ID ? 'Configured' : 'Missing'
-                }
+            success: true,
+            message: 'Registration successful',
+            user: {
+                id: savedUser._id,
+                email: savedUser.email,
+                firstName: savedUser.firstName,
+                lastName: savedUser.lastName
             }
         });
+
     } catch (error) {
+        console.error('❌ Registration error:', error);
+
+        // Check if it's a duplicate key error (MongoDB unique constraint)
+        if (error.code === 11000) {
+            console.log('❌ MongoDB duplicate key error - user already exists');
+            return res.status(400).json({
+                success: false,
+                message: 'User with this email already exists'
+            });
+        }
+
         res.status(500).json({
-            status: 'ERROR',
-            timestamp: new Date().toISOString(),
+            success: false,
+            message: 'Registration failed',
             error: error.message
         });
     }
 });
 
-// Set up multer for image storage
-const storage = multer.diskStorage({
-    destination: (req, file, cb) => {
-        cb(null, uploadFolder);  // Specify upload folder
-    },
-    filename: (req, file, cb) => {
-        const ext = path.extname(file.originalname);
-        const filename = Date.now() + ext;
-        cb(null, filename);  // Store file with a timestamp
+// Manual Login Route
+app.post('/login', async (req, res) => {
+    console.log('📥 POST /login - Body:', req.body);
+
+    try {
+        const { email, password } = req.body;
+
+        // Validation
+        if (!email || !password) {
+            return res.status(400).json({
+                success: false,
+                message: 'Email and password are required'
+            });
+        }
+
+        // Find user
+        const user = await SignupModel.findOne({ email });
+        if (!user) {
+            return res.status(401).json({
+                success: false,
+                message: 'Invalid email or password'
+            });
+        }
+
+        // Check if user registered with Google (no password)
+        if (user.provider === 'google' && !user.password) {
+            return res.status(401).json({
+                success: false,
+                message: 'This account was created with Google. Please use Google Sign-In.'
+            });
+        }
+
+        // Verify password
+        const isValidPassword = await bcrypt.compare(password, user.password);
+        if (!isValidPassword) {
+            return res.status(401).json({
+                success: false,
+                message: 'Invalid email or password'
+            });
+        }
+
+        console.log('✅ User logged in successfully:', email);
+
+        res.json({
+            success: true,
+            message: 'Login successful',
+            user: {
+                id: user._id,
+                email: user.email,
+                firstName: user.firstName,
+                lastName: user.lastName,
+                profileCompleted: user.profileCompleted
+            }
+        });
+
+    } catch (error) {
+        console.error('❌ Login error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Login failed',
+            error: error.message
+        });
     }
 });
-const upload = multer({ storage: storage });
 
-// Profile routes are handled in /auth routes
-
-// Error handling middleware
-app.use((err, req, res, next) => {
-    console.error('Server Error:', err);
-    res.status(500).json({
-        success: false,
-        message: 'Internal Server Error',
-        error: process.env.NODE_ENV === 'development' ? err.message : 'An error occurred'
-    });
+// Campaign Routes
+app.get('/campaigns', async (req, res) => {
+    try {
+        const campaigns = await CampaignModel.find().sort({ createdAt: -1 });
+        res.json(campaigns);
+    } catch (error) {
+        console.error('❌ Error fetching campaigns:', error);
+        res.status(500).json({ message: 'Error fetching campaigns', error: error.message });
+    }
 });
 
-// Handle 404 routes
+app.post('/campaigns', async (req, res) => {
+    try {
+        console.log('📥 POST /campaigns - Body:', req.body);
+        const { title, amount, photoUrls, description, email, username } = req.body;
+
+        if (!title || !amount || !description) {
+            return res.status(400).json({ message: 'Title, amount, and description are required' });
+        }
+
+        const campaign = new CampaignModel({
+            title,
+            amount,
+            photoUrls: photoUrls || [],
+            description,
+            email: email || '',
+            username: username || 'Anonymous'
+        });
+
+        await campaign.save();
+        console.log('✅ Campaign created successfully:', campaign._id);
+        res.status(201).json(campaign);
+    } catch (error) {
+        console.error('❌ Error creating campaign:', error);
+        res.status(500).json({ message: 'Error creating campaign', error: error.message });
+    }
+});
+
+// Health check endpoint
+app.get('/health', (req, res) => {
+    res.json({ status: 'OK', message: 'Server is running' });
+});
+
+// 404 handler for undefined routes
 app.use((req, res) => {
+    console.log(`❌ Route not found: ${req.method} ${req.path}`);
     res.status(404).json({
         success: false,
         message: 'Route not found'
     });
 });
 
-// Connect to MongoDB & start the server
+// MongoDB Connection
 console.log('🔄 Attempting to connect to MongoDB...');
-mongoose.connect('mongodb://localhost:27017/gofundme')
+mongoose.connect("mongodb://localhost:27017/gofundme")
     .then(() => {
-        console.log('✅ MongoDB connected successfully');
-        console.log('📊 MongoDB connection details:');
-        console.log('  - Host:', mongoose.connection.host);
-        console.log('  - Port:', mongoose.connection.port);
-        console.log('  - Database:', mongoose.connection.name);
-        console.log('  - Ready State:', mongoose.connection.readyState);
+        console.log("✅ MongoDB connected successfully");
+        console.log("📊 MongoDB connection details:");
+        console.log("  - Host: localhost");
+        console.log("  - Port: 27017");
+        console.log("  - Database: gofundme");
+        console.log("  - Ready State:", mongoose.connection.readyState);
 
-        // Test database connection with a simple query
+        // Test the connection
         mongoose.connection.db.admin().ping()
-            .then(() => console.log('✅ MongoDB ping successful'))
-            .catch(err => console.log('❌ MongoDB ping failed:', err));
-
-        const PORT = process.env.PORT || 3001;
-        app.listen(PORT, () => {
-            console.log(`🚀 Server running on http://localhost:${PORT}`);
-            console.log('� Environment:', process.env.NODE_ENV || 'development');
-            console.log('🔑 Google Client ID configured:', GOOGLE_CLIENT_ID ? 'Yes' : 'No');
-        });
+            .then(() => console.log("✅ MongoDB ping successful"))
+            .catch(err => console.log("❌ MongoDB ping failed:", err));
     })
     .catch(err => {
-        console.error('❌ MongoDB connection error:', err.message);
-        console.error('Full MongoDB error:', err);
+        console.error("❌ MongoDB connection failed:", err);
         process.exit(1);
     });
+
+// Start Server
+const PORT = process.env.PORT || 3001;
+app.listen(PORT, () => {
+    console.log(`🚀 Server running on http://localhost:${PORT}`);
+    console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
+    console.log(`🔑 Google Client ID configured: ${GOOGLE_CLIENT_ID ? 'Yes' : 'No'}`);
+});
