@@ -1,0 +1,109 @@
+.feed-container {
+    display: flex;
+    flex-direction: column;
+    gap: 32px;
+    width: 100%;
+    margin: 0 auto 64px auto;
+    animation: fadeInFeed 1.2s cubic-bezier(.4, 0, .2, 1);
+}
+
+@keyframes fadeInFeed {
+    from {
+        opacity: 0;
+        transform: translateY(40px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.feed-card {
+    background: #fff;
+    border-radius: 18px;
+    box-shadow: 0 4px 24px rgba(24, 119, 242, 0.10);
+    display: flex;
+    flex-direction: row;
+    overflow: hidden;
+    transition: box-shadow 0.2s;
+    animation: popIn 0.7s cubic-bezier(.4, 0, .2, 1);
+}
+
+@keyframes popIn {
+    from {
+        opacity: 0;
+        transform: scale(0.97);
+    }
+
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+.feed-img {
+    width: 180px;
+    height: 180px;
+    object-fit: cover;
+    border-radius: 0 18px 18px 0;
+    background: #e0eafc;
+    flex-shrink: 0;
+
+    .dashboard-feed-scroll {
+        scrollbar-width: thin;
+        scrollbar-color: #1877f2 #e0eafc;
+    }
+
+    .dashboard-feed-scroll::-webkit-scrollbar {
+        width: 8px;
+        background: #e0eafc;
+    }
+
+    .dashboard-feed-scroll::-webkit-scrollbar-thumb {
+        background: #1877f2;
+        border-radius: 8px;
+    }
+}
+
+.feed-content {
+    flex: 1;
+    padding: 24px 28px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+}
+
+.feed-title {
+    font-size: 1.5rem;
+    font-weight: 800;
+    color: #1877f2;
+    margin-bottom: 8px;
+}
+
+.feed-amount {
+    font-size: 1.1rem;
+    color: #1a237e;
+    font-weight: 600;
+    margin-bottom: 10px;
+}
+
+.feed-desc {
+    color: #333;
+    font-size: 1rem;
+    margin-bottom: 12px;
+}
+
+.feed-date {
+    color: #888;
+    font-size: 0.95rem;
+    margin-top: 8px;
+}
+
+.feed-loading,
+.feed-empty {
+    text-align: center;
+    color: #1877f2;
+    font-size: 1.2rem;
+    margin: 48px 0;
+}
