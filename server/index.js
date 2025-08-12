@@ -309,6 +309,10 @@ app.post('/campaigns', async (req, res) => {
             username: username || 'Anonymous'
         });
 
+        // Debug log: check photoUrls and campaign object
+        console.log('🖼️ photoUrls received:', photoUrls);
+        console.log('📝 Campaign object to save:', campaign);
+
         await campaign.save();
         console.log('✅ Campaign created successfully:', campaign._id);
         res.status(201).json(campaign);

@@ -47,7 +47,14 @@ const StartCampaign = () => {
             if (userProfile) {
                 try { username = JSON.parse(userProfile).username || ''; } catch { }
             }
-            const payload = { title, amount: Number(amount), photoUrls, description, email, username };
+            const payload = {
+                title,
+                amount: Number(amount),
+                photoUrls,
+                description,
+                email,
+                username
+            };
             const res = await fetch('http://localhost:3001/campaigns', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -198,7 +205,7 @@ const StartCampaign = () => {
                 </div>
             </nav>
 
-            <div className="feed-container" style={{ maxWidth: 500, margin: "48px auto", background: "#fff", borderRadius: 16, boxShadow: "0 2px 16px rgba(24,119,242,0.08)", padding: 32 }}>
+            <div className="feed-container" style={{ maxWidth: 520, margin: "48px auto", background: "#fff", borderRadius: 16, boxShadow: "0 2px 16px rgba(24,119,242,0.08)", padding: 32 }}>
                 <h2 style={{ textAlign: "center", color: "#1877f2", fontWeight: 800, marginBottom: 24 }}>Start a Campaign</h2>
                 <form onSubmit={handleSubmit}>
                     <div className="input-group">
@@ -206,7 +213,7 @@ const StartCampaign = () => {
                         <input className="form-input" value={title} onChange={e => setTitle(e.target.value)} placeholder="e.g. Help My Father Fight Cancer" />
                     </div>
                     <div className="input-group">
-                        <label>Amount to Raise (NPR)</label>
+                        <label>Amount to be Raised (NPR)</label>
                         <input className="form-input" type="number" min="1" value={amount} onChange={e => setAmount(e.target.value)} placeholder="e.g. 100000" />
                     </div>
                     <div className="input-group">
